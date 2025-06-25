@@ -1,38 +1,33 @@
 #!/usr/bin/env python3
 """
-Official GAIA Benchmark Submission Script
-Runs our ultra-minimal agent on all GAIA questions and submits to HF API
+GAIA Benchmark Submission - Gemini Agent
+Runs Gemini-powered agent on all GAIA questions and submits to official API for scoring
 """
 
 import os
+import sys
 import requests
 import json
 import time
-from gaia_agent import GAIAAgent
+
+# Import the Gemini agent
+from agent_gemini import Agent
 
 # API Configuration
 DEFAULT_API_URL = "https://agents-course-unit4-scoring.hf.space"
 
+# Stored credentials - no need to enter each time
+HF_USERNAME = "theguywithahat0"
+AGENT_CODE_URL = "https://github.com/theguywithahat0/hugging_face_agent_course"
+
 def get_huggingface_credentials():
-    """Get Hugging Face credentials from user"""
-    print("🔐 Hugging Face Authentication Required")
+    """Get Hugging Face credentials (now stored as constants)"""
+    print("🔐 Using Stored Credentials")
     print("=" * 50)
+    print(f"👤 Username: {HF_USERNAME}")
+    print(f"🔗 Agent Code: {AGENT_CODE_URL}")
     
-    username = input("Enter your Hugging Face username: ").strip()
-    if not username:
-        print("❌ Username is required!")
-        return None, None
-    
-    # For the submission, we need the agent code URL
-    # This should point to your public repository
-    agent_code_url = input("Enter your agent code URL (GitHub/HF repo): ").strip()
-    if not agent_code_url:
-        # Default to a placeholder - you should replace this with your actual repo
-        agent_code_url = "https://github.com/your-username/your-gaia-agent"
-        print(f"⚠️  Using placeholder URL: {agent_code_url}")
-        print("   Please update this with your actual repository URL")
-    
-    return username, agent_code_url
+    return HF_USERNAME, AGENT_CODE_URL
 
 def fetch_all_gaia_questions():
     """Fetch all GAIA questions from the API"""
@@ -62,11 +57,11 @@ def fetch_all_gaia_questions():
         return []
 
 def run_agent_on_all_questions(questions):
-    """Run our agent on all GAIA questions"""
-    print(f"\n🤖 Running Ultra-Minimal GAIA Agent on {len(questions)} questions")
+    """Run our Gemini agent on all GAIA questions"""
+    print(f"\n🤖 Running Gemini GAIA Agent on {len(questions)} questions")
     print("=" * 60)
     
-    agent = GAIAAgent()
+    agent = Agent()
     results = []
     answers_payload = []
     
@@ -143,6 +138,44 @@ def run_agent_on_all_questions(questions):
     
     return results, answers_payload
 
+def analyze_local_results(results):
+    """Analyze results before submission"""
+    print(f"\n📊 LOCAL RESULTS ANALYSIS")
+    print("=" * 50)
+    
+    total_questions = len(results)
+    successful_answers = len([r for r in results if r["success"]])
+    error_count = total_questions - successful_answers
+    
+    print(f"📝 Total Questions: {total_questions}")
+    print(f"✅ Successful Answers: {successful_answers}")
+    print(f"❌ Errors: {error_count}")
+    print(f"📊 Success Rate: {(successful_answers/total_questions)*100:.1f}%")
+    
+    # Analyze answer lengths (shorter is usually better for GAIA)
+    answer_lengths = []
+    for result in results:
+        if result["success"] and result["result"]:
+            answer_lengths.append(len(str(result["result"])))
+    
+    if answer_lengths:
+        avg_length = sum(answer_lengths) / len(answer_lengths)
+        print(f"📏 Average Answer Length: {avg_length:.1f} characters")
+        print(f"📏 Answer Length Range: {min(answer_lengths)} - {max(answer_lengths)}")
+        
+        # Count concise answers (good sign)
+        concise_answers = len([l for l in answer_lengths if l <= 20])
+        print(f"✅ Concise Answers (≤20 chars): {concise_answers}/{len(answer_lengths)} ({(concise_answers/len(answer_lengths)*100):.1f}%)")
+    
+    # Show some example answers
+    print(f"\n📋 SAMPLE ANSWERS:")
+    for i, result in enumerate(results[:5]):
+        if result["success"]:
+            answer = str(result["result"])[:50] + "..." if len(str(result["result"])) > 50 else str(result["result"])
+            print(f"   Q{i+1}: {answer}")
+        else:
+            print(f"   Q{i+1}: ERROR - {result['error']}")
+
 def submit_results(username, agent_code_url, answers_payload):
     """Submit results to the official GAIA API"""
     api_url = DEFAULT_API_URL
@@ -207,86 +240,38 @@ def submit_results(username, agent_code_url, answers_payload):
         print(f"💥 Unexpected error: {e}")
         return False
 
-def analyze_local_results(results):
-    """Analyze results locally before submission"""
-    print(f"\n📊 LOCAL RESULTS ANALYSIS")
-    print("=" * 40)
-    
-    if not results:
-        print("No results to analyze")
-        return
-    
-    total = len(results)
-    successful = sum(1 for r in results if r["success"])
-    failed = total - successful
-    success_rate = (successful / total) * 100 if total > 0 else 0
-    
-    avg_duration = sum(r["duration"] for r in results) / total if total > 0 else 0
-    
-    print(f"📝 Total Questions: {total}")
-    print(f"✅ Successful: {successful}")
-    print(f"❌ Failed: {failed}")
-    print(f"📊 Success Rate: {success_rate:.1f}%")
-    print(f"⏱️  Average Duration: {avg_duration:.1f}s")
-    
-    # Show some successful answers
-    successes = [r for r in results if r["success"]][:5]  # First 5
-    if successes:
-        print(f"\n✅ SAMPLE SUCCESSFUL ANSWERS:")
-        print("-" * 30)
-        for s in successes:
-            task_id = s['task_id'][:8] + "..."  # Truncate for readability
-            result = str(s['result'])[:50] + "..." if len(str(s['result'])) > 50 else str(s['result'])
-            print(f"• {task_id}: {result}")
-    
-    # Show some failures
-    failures = [r for r in results if not r["success"]][:3]  # First 3
-    if failures:
-        print(f"\n❌ SAMPLE FAILURES:")
-        print("-" * 30)
-        for f in failures:
-            task_id = f['task_id'][:8] + "..."
-            error = f['error'][:50] + "..." if len(f['error']) > 50 else f['error']
-            print(f"• {task_id}: {error}")
-
 def main():
-    print("🚀 Official GAIA Benchmark Submission")
-    print("Ultra-Minimal Agent Performance Evaluation")
+    """Main submission function"""
+    print("🚀 GAIA Benchmark Submission - Gemini 2.5 Flash Agent")
+    print("🧠 Powered by Google's latest Gemini model for superior reasoning")
     print("=" * 60)
     
-    # 1. Get credentials
+    # Get credentials
     username, agent_code_url = get_huggingface_credentials()
-    if not username:
-        print("❌ Authentication failed. Exiting.")
-        return
     
-    # 2. Fetch all questions
+    # Fetch questions
     questions = fetch_all_gaia_questions()
     if not questions:
-        print("❌ Could not fetch questions. Exiting.")
+        print("❌ Cannot proceed without questions. Exiting.")
         return
     
-    # 3. Run agent on all questions
+    # Run agent on all questions
     results, answers_payload = run_agent_on_all_questions(questions)
     
-    # 4. Analyze results locally
+    # Analyze local results
     analyze_local_results(results)
     
-    # 5. Confirm submission
-    print(f"\n🤔 Ready to submit {len(answers_payload)} answers to official GAIA API?")
-    confirm = input("Type 'yes' to submit, or anything else to cancel: ").strip().lower()
+    # Auto-submit (no confirmation needed for testing)
+    print(f"\n🚀 Auto-submitting {len(answers_payload)} answers to official GAIA API...")
+    print("⚡ (Auto-submit enabled for faster testing)")
     
-    if confirm != 'yes':
-        print("❌ Submission cancelled by user")
-        print("💾 Results saved locally for review")
-        return
-    
-    # 6. Submit to official API
+    # Submit to API
     success = submit_results(username, agent_code_url, answers_payload)
     
     if success:
         print("\n🎉 MISSION ACCOMPLISHED!")
-        print("Your ultra-minimal GAIA agent has been officially benchmarked!")
+        print("Your Gemini-powered GAIA agent has been officially benchmarked!")
+        print("🧠 Expected significant improvement over local Ollama models!")
     else:
         print("\n😞 Submission failed, but your agent ran successfully locally")
         print("💾 You can review the results above")

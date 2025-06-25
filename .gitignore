@@ -60,4 +60,7 @@ config.local.py
 # Temporary files
 *.tmp
 *.temp
-.cache/ 
+.cache/
+
+# Old versions and backup files
+old/ 
